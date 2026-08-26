@@ -245,15 +245,29 @@ static void handle_new_foreign_toplevel_capture_request(struct wl_listener *list
 
 static void handle_new_output_capture_request(struct wl_listener *listener, void *data) {
 	struct wlr_ext_output_image_capture_source_manager_v1_request_event *request = data;
+	struct sway_output *output = request->output->data;
 
-	struct wlr_ext_image_capture_source_v1 *source =
-		wlr_ext_image_capture_source_v1_create_with_raw_output(request->output);
-	if (source == NULL) {
-		wl_client_post_no_memory(request->client);
-		return;
+	if (output->image_capture_source == NULL) {
+		// We can't know if the gamma_control_manager_v1 shader fallback will get used
+		// during the capture
+		bool color_management = server.renderer->features.output_color_transform;
+
+		struct wlr_ext_image_capture_source_v1 *source;
+		if (color_management) {
+			source = wlr_ext_image_capture_source_v1_create_with_scene_output(root->root_scene,
+				request->output, root->output_layout);
+		} else {
+			source = wlr_ext_image_capture_source_v1_create_with_raw_output(request->output);
+		}
+		if (source == NULL) {
+			wl_client_post_no_memory(request->client);
+			return;
+		}
+		output->image_capture_source = source;
 	}
 
-	wlr_ext_output_image_capture_source_manager_v1_request_accept(request, source);
+	wlr_ext_output_image_capture_source_manager_v1_request_accept(request,
+		output->image_capture_source);
 }
 
 bool server_init(struct sway_server *server) {
